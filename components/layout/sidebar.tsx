@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Home, FolderKanban, ClipboardList, User, LogOut } from "lucide-react";
+import { Home, FolderKanban, ClipboardList, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { useState, useEffect } from "react";
 
@@ -35,11 +35,6 @@ const navItems = [
     title: "Sessions",
     href: "/sessions",
     icon: ClipboardList,
-  },
-  {
-    title: "Profile",
-    href: "/profile",
-    icon: User,
   },
 ];
 

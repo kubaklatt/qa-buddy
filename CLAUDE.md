@@ -60,8 +60,7 @@ Configure the shadcn/ui theme to use the deep purple as the primary color (--pri
 
 ### Users
 - Authenticated via GitHub OAuth
-- Fields: id, github_username, display_name, avatar_url, default_browsers (array, e.g. ["Chrome", "Firefox"])
-- Users can set their default browsers in profile settings
+- Fields: id, github_username, display_name, avatar_url
 
 ### Areas (product domains)
 - Represent broad product areas like "Lists", "Tables", "Paste from Office", "Track Changes", "AI", "Drupal"
@@ -112,7 +111,7 @@ Configure the shadcn/ui theme to use the deep purple as the primary color (--pri
 - Form: name, description, branch, external link
 - Select areas (multi-select) → auto-loads general checklists
 - Select topics within chosen areas (multi-select) → auto-loads topic checklists
-- Assign testers from user list → for each tester, select browsers (pre-filled from their defaults)
+- Assign testers from user list → for each tester, select browsers
 
 ### 4. Session View (/sessions/[id])
 Two sub-views depending on role:
@@ -135,10 +134,6 @@ Two sub-views depending on role:
 ### 5. Session History (/sessions)
 - List of all sessions (filterable by area, topic, status, date)
 - Click into completed session → read-only view with all results
-
-### 6. Profile (/profile)
-- GitHub info (read-only)
-- Default browsers setting
 
 ## Report Generation
 

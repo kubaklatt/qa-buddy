@@ -11,7 +11,6 @@ CREATE TABLE users (
   github_username TEXT NOT NULL,
   display_name TEXT,
   avatar_url TEXT,
-  default_browsers TEXT[] DEFAULT ARRAY['Chrome']::TEXT[],
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

@@ -65,7 +65,7 @@ export async function getAllUsers() {
 
   const { data: users, error } = await supabase
     .from('users')
-    .select('id, github_username, display_name, avatar_url, default_browsers, created_at, updated_at')
+    .select('id, github_username, display_name, avatar_url, created_at, updated_at')
     .order('github_username', { ascending: true });
 
   if (error) {

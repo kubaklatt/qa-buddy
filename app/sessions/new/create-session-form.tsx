@@ -20,7 +20,7 @@ interface CreateSessionFormProps {
   users: User[];
 }
 
-const BROWSER_OPTIONS = ['Chrome', 'Firefox', 'Safari', 'Edge'];
+const BROWSER_OPTIONS = ['Chrome', 'Firefox', 'Safari', 'Edge', 'iOS', 'Android'];
 
 export function CreateSessionForm({ areas, users }: CreateSessionFormProps) {
   const router = useRouter();
@@ -84,10 +84,9 @@ export function CreateSessionForm({ areas, users }: CreateSessionFormProps) {
         delete newState[userId];
         return newState;
       } else {
-        const user = users.find((u) => u.id === userId);
         return {
           ...prev,
-          [userId]: user?.default_browsers || ['Chrome'],
+          [userId]: ['Chrome'],
         };
       }
     });

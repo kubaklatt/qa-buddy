@@ -5,7 +5,6 @@ export interface User {
   github_username: string;
   display_name: string | null;
   avatar_url: string | null;
-  default_browsers: string[];
   created_at: string;
   updated_at: string;
 }

@@ -19,7 +19,6 @@ export async function GET(request: Request) {
         github_username: userMetadata.user_name || userMetadata.preferred_username,
         display_name: userMetadata.full_name || userMetadata.name,
         avatar_url: userMetadata.avatar_url,
-        default_browsers: ["Chrome"], // Default to Chrome
       });
     }
   }
