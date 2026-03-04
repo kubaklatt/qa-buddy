@@ -1,8 +1,28 @@
 -- QA Buddy Database Schema Migration
 -- Run this in your Supabase SQL Editor
+--
+-- WARNING: This script will DROP all existing tables and recreate them
+-- All existing data will be lost!
+--
 
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Drop all tables in reverse dependency order (CASCADE will handle foreign keys)
+-- This allows you to run the migration multiple times without errors
+DROP TABLE IF EXISTS proposed_checkpoints CASCADE;
+DROP TABLE IF EXISTS session_results CASCADE;
+DROP TABLE IF EXISTS session_testers CASCADE;
+DROP TABLE IF EXISTS session_topics CASCADE;
+DROP TABLE IF EXISTS session_areas CASCADE;
+DROP TABLE IF EXISTS checkpoints CASCADE;
+DROP TABLE IF EXISTS topics CASCADE;
+DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS areas CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+
+-- Drop trigger function if exists
+DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
 
 -- Users table
 -- Stores user information from GitHub OAuth

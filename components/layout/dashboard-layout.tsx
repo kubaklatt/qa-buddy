@@ -12,11 +12,22 @@ const getCachedUser = cache(async () => {
 
   if (!authUser) return null;
 
+  // Try to get user from public.users table
   const { data } = await supabase
     .from("users")
     .select("id, github_username, display_name, avatar_url")
     .eq("id", authUser.id)
     .single();
+
+  // If user exists in auth but not in public.users, return basic info from auth
+  if (!data && authUser) {
+    return {
+      id: authUser.id,
+      github_username: authUser.user_metadata?.user_name || authUser.user_metadata?.preferred_username || "User",
+      display_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || null,
+      avatar_url: authUser.user_metadata?.avatar_url || null,
+    };
+  }
 
   return data;
 });

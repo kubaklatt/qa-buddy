@@ -149,3 +149,4 @@ Report generation (Slack copy-paste, integrations) is OUT OF SCOPE for now. May 
 - Responsive design but desktop-first (this is an internal tool used on laptops)
 - Error handling: show toast notifications for errors (shadcn/ui Toast component)
 - Loading states: use Skeleton components from shadcn/ui
+- Jeżeli coś zmieniamy co dotyczy zmiany w bazy danych i cokolwiek takiego to aktualizuj schema bazy danych w taki sposób, abym mógł wszystko nadpisać, bo aktualnie i tak działamy na testowych danych. Po aktualnej zmianie dostaję w Supabase błąd: "Error: Failed to run sql query: ERROR: 42P07: relation "users" already exists".
