@@ -11,7 +11,7 @@ by whom, and what was missed. This tool solves that by providing:
 
 - **Living checklists** that grow organically over time as testers discover new scenarios
 - **Test sessions** where testers mark what they checked, found bugs, and wrote notes
-- **A dashboard** for session managers to see coverage gaps and generate reports
+- **A dashboard** for session managers to see coverage gaps
 - **Searchable history** of past sessions for regression investigation
 
 The tool must be lightweight and non-invasive — it supports the existing exploratory
@@ -56,6 +56,11 @@ Configure the shadcn/ui theme to use the deep purple as the primary color (--pri
 - Use icons sparingly — lucide-react icons where helpful (Bug, CheckCircle, SkipForward, Minus, Plus, etc.)
 - Rounded, modern feel — consistent with CKEditor 5 landing page aesthetic
 
+## Permissions
+
+- No roles or permission system. Everyone can do everything (create sessions, edit checklists, add checkpoints, complete sessions).
+- The team operates on trust.
+
 ## Data Model
 
 ### Users
@@ -65,35 +70,47 @@ Configure the shadcn/ui theme to use the deep purple as the primary color (--pri
 ### Areas (product domains)
 - Represent broad product areas like "Lists", "Tables", "Paste from Office", "Track Changes", "AI", "Drupal"
 - Fields: id, name, description, created_at
-- Each area has a **general checklist** — checkpoints relevant to ANY testing session in this area
-
-### Topics (specific themes within an area)
-- Nested under areas, e.g. Area "Lists" → Topic "List indentation", Topic "Width attributes"
-- Fields: id, area_id, name, description, created_at
-- Each topic has a **topic-specific checklist** — checkpoints relevant only when this topic is tested
+- Each area has a **permanent checklist** — checkpoints that get pulled into EVERY session tagging this area
+- This is a flat structure. There are NO nested topics/themes within areas.
 
 ### Checkpoints (checklist items)
-- Belong to either an area (general) or a topic (specific)
-- Fields: id, area_id (nullable), topic_id (nullable), description, category (optional grouping label), created_by, created_at
-- A checkpoint is a short reminder like "RTL support" or "Paste from Word — lists skipping indentation levels", NOT a formal step-by-step test case
-- Can optionally have a category for grouping (e.g. "Paste", "Edge cases", "Interactions")
+Two types of checkpoints exist:
+
+**Permanent checkpoints** — belong to an Area's permanent checklist.
+- These are reusable and get pulled (as a snapshot) into every session that tags the area.
+- They represent things worth checking every time this area is touched (e.g. "RTL support", "Track Changes interaction", "Paste from Word").
+- Fields: id, area_id (FK), description, category (optional grouping label), created_by, created_at
+- A checkpoint is a short reminder/scenario, NOT a formal step-by-step test case.
+- Can optionally have a category for grouping (e.g. "Paste", "Edge cases", "Interactions").
+
+**Session-only checkpoints** — created by testers during a session.
+- They live only in that session and are NOT part of any area's permanent checklist.
+- They represent scenario-specific things for this particular testing (e.g. "Tab/Shift+Tab changes indentation by 40px").
+- After the session is completed, they remain visible in the session history but don't appear in future sessions automatically.
+- Fields: id, session_id (FK), description, category (optional), created_by, created_at
+
+**Promoting session-only to permanent:** When adding a checkpoint during a session, the tester has a simple choice:
+- "This session only" — lives only in current session
+- "This session + add to {Area} permanent checklist" — lives in current session AND becomes a permanent checkpoint for the area
 
 ### Sessions (test sessions)
 - Fields: id, name, description, branch, external_link (Slack/PR URL), status (active/completed), created_by, created_at, completed_at
 - Many-to-many with areas (session_areas)
-- Many-to-many with topics (session_topics)
+- Each session = one specific testing topic/request. Do NOT combine multiple unrelated topics in one session.
+- When a session is created, the permanent checkpoints from selected areas are **snapshotted** — copied into the session. Changes to area checklists after session creation do not affect existing sessions.
+- Exception: new checkpoints added by testers DURING the session do appear for everyone in that session.
+- When a session is marked as "completed", it is **frozen** — no further edits allowed, read-only.
 
 ### Session Testers (assignment)
 - Fields: id, session_id, user_id, browsers (array), tester_status (in_progress/completed), notes (free text exploration notes)
-- When creating a session, the manager assigns testers and their browsers
+- Any user can join a session (self-assign), not just people assigned at creation.
+- When creating a session, the creator assigns testers and their browsers.
 
 ### Session Results (checkpoint outcomes per tester)
 - Fields: id, session_id, checkpoint_id, user_id, status (passed/bug/skipped/not_applicable), bug_link (optional URL), bug_description (optional short text), created_at, updated_at
-- Each tester independently marks each checkpoint
-
-### Proposed Checkpoints (suggestions from testers during a session)
-- Fields: id, session_id, proposed_by, description, category, target_type (area/topic), target_area_id, target_topic_id, status (pending/approved/rejected), approved_by, created_at
-- Tester proposes a new checkpoint during testing → session manager can approve it → it becomes a permanent checkpoint
+- Each tester independently marks each checkpoint (both permanent and session-only).
+- Each tester marks checkpoints once (not per browser). Their assigned browsers are visible, so it's understood they tested on those browsers.
+- Show who marked each checkpoint (avatar/name next to the status).
 
 ## Key Pages / Views
 
@@ -103,41 +120,83 @@ Configure the shadcn/ui theme to use the deep purple as the primary color (--pri
 
 ### 2. Areas & Checklists (/areas)
 - List of all areas
-- Click into area → see general checklist + list of topics
-- Click into topic → see topic-specific checklist
-- CRUD for areas, topics, and checkpoints
+- Click into area → see its permanent checklist
+- CRUD for areas and checkpoints
 
-### 3. Create Session (/sessions/new)
+### 3. Area Detail (/areas/[id])
+- Area name + description (editable)
+- Permanent checklist — list of checkpoints grouped by category (if category exists)
+- Each checkpoint shows: description, category badge (if any), created by (avatar), date
+- "Add Checkpoint" button
+- Checkpoints can be edited and deleted
+
+### 4. Create Session (/sessions/new)
 - Form: name, description, branch, external link
-- Select areas (multi-select) → auto-loads general checklists
-- Select topics within chosen areas (multi-select) → auto-loads topic checklists
-- Assign testers from user list → for each tester, select browsers
+- Select areas (multi-select) → shows preview of how many permanent checkpoints will be loaded
+- Assign testers from user list → for each tester, select browsers (pre-filled from previous sessions if possible)
 
-### 4. Session View (/sessions/[id])
-Two sub-views depending on role:
+### 5. Session View (/sessions/[id])
+Two tabs: "My Testing" and "Dashboard"
 
-**Tester view:**
-- Combined checklist (general + topic-specific) with status buttons per checkpoint (OK / Bug / Skipped / N/A)
-- Bug link + description field appears when "Bug" is selected
-- Free-text exploration notes area
-- Button to propose new checkpoint
-- Button to mark self as "Completed"
+Any user can join the session ("Join Session" button if not yet assigned, with browser selection).
 
-**Manager/Dashboard view:**
-- Coverage overview: how many checkpoints checked per tester, overall coverage percentage
-- Per-checkpoint breakdown: who checked what, what's uncovered
-- List of found bugs with links
-- Tester statuses (in progress / completed)
-- Pending checkpoint proposals to approve/reject
-- "Generate Report" button → formatted text ready to copy-paste to Slack
+**Session header (visible on both tabs):**
+- Session name, branch (monospace badge), external link, status badge
+- List of assigned testers with their browsers and status (in_progress / completed)
 
-### 5. Session History (/sessions)
-- List of all sessions (filterable by area, topic, status, date)
+**My Testing tab (tester view):**
+1. Permanent checkpoints (snapshotted from area checklists), grouped by area:
+   - "📂 {Area name}" with its checkpoints
+   - Each checkpoint row: description, category badge, status buttons (✅ OK | 🐛 Bug | ⏭️ Skip | ➖ N/A), who marked it (avatar)
+   - When "Bug" is selected → expand inline: bug_link input + bug_description input
+   - Gray out / mute checkpoints already marked (so unchecked ones stand out)
+2. Session-only checkpoints section:
+   - Separate section below permanent checkpoints
+   - Same UI as above (status buttons, bug fields)
+   - These were added during this session by any tester
+3. Exploration notes:
+   - Large textarea for free-form notes
+   - Auto-saves (debounced) or has a save button
+4. "Add Checkpoint" button:
+   - Dialog: description, optional category
+   - Choice: "This session only" or "This session + add to {Area} permanent checklist"
+   - No approval needed — immediately visible to all testers in the session
+5. "Mark as Completed" button with confirmation dialog
+6. Progress indicator: "X/Y checkpoints marked"
+
+Checklist state saves immediately on each status click (optimistic updates).
+
+**Dashboard tab (overview):**
+1. Coverage Overview: X/Y checkpoints covered (progress bar), per-area breakdown, color-coded (green/red/gray)
+2. Per-Tester Breakdown: table with Tester | Browser | Status | Checked | Bugs Found (expandable rows)
+3. Uncovered Checkpoints: list of checkpoints no tester has marked, highlighted in warning style
+4. Bugs Found: compact table with checkpoint description, bug description, bug link, reported by
+5. Complete Session: button to freeze the session (warning if not all testers are done)
+
+### 6. Session History (/sessions)
+- List of all sessions (filterable by area, status, date)
 - Click into completed session → read-only view with all results
 
-## Report Generation
+### 7. Profile (/profile)
+- GitHub info (read-only)
+- Default browsers setting
 
-Report generation (Slack copy-paste, integrations) is OUT OF SCOPE for now. May be added later.
+## Phase 2 Features (NOT for initial build)
+
+### Session Suggestions Panel
+When a session is created with an area (e.g. "Lists"), the app looks at past completed sessions that also tagged "Lists". If those past sessions had session-only checkpoints, it displays them as suggestions.
+
+UI: A collapsible panel/section in the session view showing:
+- List of past sessions for the same area(s), with their session-only checkpoints
+- Each past session is expandable — click to see its session-only checkpoints
+- Each checkpoint has an "Add to this session" button
+- Clicking it copies the checkpoint into the current session as a session-only checkpoint
+- Does NOT add it to the permanent checklist
+
+This feature only makes sense once there's history of past sessions, so it's not needed for MVP.
+
+### Report Generation
+Report generation (Slack copy-paste, integrations) may be added later.
 
 ## Development Guidelines
 
