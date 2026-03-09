@@ -35,7 +35,7 @@ export function CheckpointRow({ checkpoint, sessionId, result }: CheckpointRowPr
     try {
       await updateSessionResult({
         sessionId,
-        checkpointId: checkpoint.id,
+        sessionCheckpointId: checkpoint.id,
         status: newStatus,
         bugLink: newStatus === 'bug' ? bugLink : null,
         bugDescription: newStatus === 'bug' ? bugDescription : null,
@@ -65,7 +65,7 @@ export function CheckpointRow({ checkpoint, sessionId, result }: CheckpointRowPr
     try {
       await updateSessionResult({
         sessionId,
-        checkpointId: checkpoint.id,
+        sessionCheckpointId: checkpoint.id,
         status: 'bug',
         bugLink,
         bugDescription,

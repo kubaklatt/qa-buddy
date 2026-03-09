@@ -11,12 +11,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { createSession, getCheckpointCounts } from '@/lib/actions/sessions';
-import { AreaWithTopics, User } from '@/lib/types';
+import { Area, User } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CreateSessionFormProps {
-  areas: AreaWithTopics[];
+  areas: Area[];
   users: User[];
 }
 
@@ -32,47 +32,30 @@ export function CreateSessionForm({ areas, users }: CreateSessionFormProps) {
   const [branch, setBranch] = useState('');
   const [externalLink, setExternalLink] = useState('');
   const [selectedAreaIds, setSelectedAreaIds] = useState<string[]>([]);
-  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
   const [selectedTesters, setSelectedTesters] = useState<Record<string, string[]>>({});
-  const [checkpointCounts, setCheckpointCounts] = useState<Record<string, { general: number; topics: Record<string, number> }>>({});
+  const [checkpointCounts, setCheckpointCounts] = useState<Record<string, number>>({});
 
-  // Update checkpoint counts when areas or topics change
+  // Update checkpoint counts when areas change
   useEffect(() => {
-    if (selectedAreaIds.length === 0 && selectedTopicIds.length === 0) {
+    if (selectedAreaIds.length === 0) {
       setCheckpointCounts({});
       return;
     }
 
     const fetchCounts = async () => {
-      const counts = await getCheckpointCounts(selectedAreaIds, selectedTopicIds);
+      const counts = await getCheckpointCounts(selectedAreaIds);
       setCheckpointCounts(counts);
     };
 
     fetchCounts();
-  }, [selectedAreaIds, selectedTopicIds]);
+  }, [selectedAreaIds]);
 
   const toggleArea = (areaId: string) => {
     setSelectedAreaIds((prev) => {
       if (prev.includes(areaId)) {
-        // Remove area and all its topics
-        const area = areas.find((a) => a.id === areaId);
-        const topicIdsToRemove = area?.topics.map((t) => t.id) || [];
-        setSelectedTopicIds((prevTopics) =>
-          prevTopics.filter((id) => !topicIdsToRemove.includes(id))
-        );
         return prev.filter((id) => id !== areaId);
       } else {
         return [...prev, areaId];
-      }
-    });
-  };
-
-  const toggleTopic = (topicId: string) => {
-    setSelectedTopicIds((prev) => {
-      if (prev.includes(topicId)) {
-        return prev.filter((id) => id !== topicId);
-      } else {
-        return [...prev, topicId];
       }
     });
   };
@@ -133,7 +116,6 @@ export function CreateSessionForm({ areas, users }: CreateSessionFormProps) {
         branch: branch.trim() || null,
         external_link: externalLink.trim() || null,
         area_ids: selectedAreaIds,
-        topic_ids: selectedTopicIds,
         testers: Object.entries(selectedTesters).map(([user_id, browsers]) => ({
           user_id,
           browsers,
@@ -150,14 +132,7 @@ export function CreateSessionForm({ areas, users }: CreateSessionFormProps) {
   };
 
   const getTotalCheckpoints = () => {
-    let total = 0;
-    Object.values(checkpointCounts).forEach((areaCounts) => {
-      total += areaCounts.general;
-      Object.values(areaCounts.topics).forEach((topicCount) => {
-        total += topicCount;
-      });
-    });
-    return total;
+    return Object.values(checkpointCounts).reduce((sum, count) => sum + count, 0);
   };
 
   return (
@@ -217,12 +192,12 @@ export function CreateSessionForm({ areas, users }: CreateSessionFormProps) {
           </CardContent>
         </Card>
 
-        {/* Area & Topic Selection */}
+        {/* Area Selection */}
         <Card>
           <CardHeader>
-            <CardTitle>Areas & Topics</CardTitle>
+            <CardTitle>Areas</CardTitle>
             <CardDescription>
-              Select areas to test and optionally specific topics within those areas
+              Select areas to test. Permanent checkpoints from selected areas will be included.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -232,10 +207,6 @@ export function CreateSessionForm({ areas, users }: CreateSessionFormProps) {
               <div className="space-y-4">
                 {areas.map((area) => {
                   const isAreaSelected = selectedAreaIds.includes(area.id);
-                  const areaTopics = area.topics || [];
-                  const selectedTopicsInArea = areaTopics.filter((t) =>
-                    selectedTopicIds.includes(t.id)
-                  );
 
                   return (
                     <div key={area.id} className="border rounded-lg p-4">
@@ -253,61 +224,16 @@ export function CreateSessionForm({ areas, users }: CreateSessionFormProps) {
                             >
                               {area.name}
                             </Label>
-                            {isAreaSelected && checkpointCounts[area.id] && (
+                            {isAreaSelected && checkpointCounts[area.id] !== undefined && (
                               <Badge variant="secondary" className="text-xs">
-                                {checkpointCounts[area.id].general} general
-                                {selectedTopicsInArea.length > 0 &&
-                                  ` + ${Object.values(checkpointCounts[area.id].topics).reduce(
-                                    (sum, count) => sum + count,
-                                    0
-                                  )} from topics`}
+                                {checkpointCounts[area.id]} permanent checkpoints
                               </Badge>
                             )}
                           </div>
                           {area.description && (
-                            <p className="text-sm text-muted-foreground mb-3">
+                            <p className="text-sm text-muted-foreground">
                               {area.description}
                             </p>
-                          )}
-
-                          {/* Topics */}
-                          {isAreaSelected && areaTopics.length > 0 && (
-                            <div className="mt-3 pl-6 space-y-2 border-l-2 border-muted">
-                              <p className="text-xs font-medium text-muted-foreground uppercase">
-                                Optional Topics
-                              </p>
-                              {areaTopics.map((topic) => (
-                                <div key={topic.id} className="flex items-start gap-2">
-                                  <Checkbox
-                                    id={`topic-${topic.id}`}
-                                    checked={selectedTopicIds.includes(topic.id)}
-                                    onCheckedChange={() => toggleTopic(topic.id)}
-                                  />
-                                  <div className="flex-1">
-                                    <Label
-                                      htmlFor={`topic-${topic.id}`}
-                                      className="text-sm cursor-pointer font-normal"
-                                    >
-                                      {topic.name}
-                                      {selectedTopicIds.includes(topic.id) &&
-                                        checkpointCounts[area.id]?.topics[topic.id] && (
-                                          <Badge
-                                            variant="outline"
-                                            className="ml-2 text-xs"
-                                          >
-                                            {checkpointCounts[area.id].topics[topic.id]}
-                                          </Badge>
-                                        )}
-                                    </Label>
-                                    {topic.description && (
-                                      <p className="text-xs text-muted-foreground mt-0.5">
-                                        {topic.description}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
                           )}
                         </div>
                       </div>
@@ -317,7 +243,7 @@ export function CreateSessionForm({ areas, users }: CreateSessionFormProps) {
 
                 {selectedAreaIds.length > 0 && (
                   <div className="flex items-center gap-2 pt-2 border-t">
-                    <p className="text-sm font-medium">Total checkpoints:</p>
+                    <p className="text-sm font-medium">Total permanent checkpoints:</p>
                     <Badge variant="default">{getTotalCheckpoints()}</Badge>
                   </div>
                 )}

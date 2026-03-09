@@ -38,9 +38,6 @@ export async function getSession(id: string) {
       session_areas (
         areas (id, name)
       ),
-      session_topics (
-        topics (id, name, area_id)
-      ),
       session_testers (
         id,
         browsers,
@@ -76,67 +73,38 @@ export async function getAllUsers() {
   return users;
 }
 
-export async function getAreasWithTopics() {
+export async function getAllAreas() {
   const supabase = await createClient();
 
   const { data: areas, error } = await supabase
     .from('areas')
-    .select(`
-      id,
-      name,
-      description,
-      created_at,
-      created_by,
-      topics (id, area_id, name, description, created_at, created_by)
-    `)
+    .select('id, name, description, created_at, created_by')
     .order('name', { ascending: true });
 
   if (error) {
-    console.error('Error fetching areas with topics:', error);
+    console.error('Error fetching areas:', error);
     return [];
   }
 
   return areas;
 }
 
-export async function getCheckpointCounts(areaIds: string[], topicIds: string[]) {
+export async function getCheckpointCounts(areaIds: string[]) {
   const supabase = await createClient();
 
-  const counts: Record<string, { general: number; topics: Record<string, number> }> = {};
+  const { data, error } = await supabase
+    .from('checkpoints')
+    .select('area_id')
+    .in('area_id', areaIds);
 
-  for (const areaId of areaIds) {
-    // Get general checkpoints for the area
-    const { count: generalCount } = await supabase
-      .from('checkpoints')
-      .select('*', { count: 'exact', head: true })
-      .eq('area_id', areaId)
-      .is('topic_id', null);
-
-    counts[areaId] = {
-      general: generalCount || 0,
-      topics: {},
-    };
+  if (error) {
+    console.error('Error fetching checkpoint counts:', error);
+    return {};
   }
 
-  // Get topic-specific checkpoints
-  for (const topicId of topicIds) {
-    const { data: topic } = await supabase
-      .from('topics')
-      .select('area_id')
-      .eq('id', topicId)
-      .single();
-
-    if (topic) {
-      const { count: topicCount } = await supabase
-        .from('checkpoints')
-        .select('*', { count: 'exact', head: true })
-        .eq('topic_id', topicId);
-
-      if (!counts[topic.area_id]) {
-        counts[topic.area_id] = { general: 0, topics: {} };
-      }
-      counts[topic.area_id].topics[topicId] = topicCount || 0;
-    }
+  const counts: Record<string, number> = {};
+  for (const row of data || []) {
+    counts[row.area_id] = (counts[row.area_id] || 0) + 1;
   }
 
   return counts;
@@ -148,7 +116,6 @@ interface CreateSessionData {
   branch: string | null;
   external_link: string | null;
   area_ids: string[];
-  topic_ids: string[];
   testers: Array<{
     user_id: string;
     browsers: string[];
@@ -198,22 +165,38 @@ export async function createSession(data: CreateSessionData) {
       console.error('Error creating session areas:', areasError);
       throw new Error('Failed to associate areas with session');
     }
-  }
 
-  // Create session_topics associations
-  if (data.topic_ids.length > 0) {
-    const { error: topicsError } = await supabase
-      .from('session_topics')
-      .insert(
-        data.topic_ids.map((topic_id) => ({
-          session_id: session.id,
-          topic_id,
-        }))
-      );
+    // Snapshot permanent checkpoints from selected areas into session_checkpoints
+    const { data: checkpoints, error: checkpointsError } = await supabase
+      .from('checkpoints')
+      .select('*')
+      .in('area_id', data.area_ids);
 
-    if (topicsError) {
-      console.error('Error creating session topics:', topicsError);
-      throw new Error('Failed to associate topics with session');
+    if (checkpointsError) {
+      console.error('Error fetching checkpoints:', checkpointsError);
+      throw new Error('Failed to fetch checkpoints');
+    }
+
+    if (checkpoints && checkpoints.length > 0) {
+      const { error: sessionCheckpointsError } = await supabase
+        .from('session_checkpoints')
+        .insert(
+          checkpoints.map((checkpoint) => ({
+            session_id: session.id,
+            checkpoint_id: checkpoint.id,
+            description: checkpoint.description,
+            category: checkpoint.category,
+            source: 'permanent',
+            area_id: checkpoint.area_id,
+            created_by: checkpoint.created_by,
+            created_at: checkpoint.created_at,
+          }))
+        );
+
+      if (sessionCheckpointsError) {
+        console.error('Error creating session checkpoints:', sessionCheckpointsError);
+        throw new Error('Failed to snapshot checkpoints');
+      }
     }
   }
 
@@ -293,54 +276,35 @@ export async function deleteSession(id: string) {
   revalidatePath('/sessions');
 }
 
-// Get all checkpoints for a session based on selected areas and topics
+// Get all checkpoints for a session from the session_checkpoints snapshot
 export async function getSessionCheckpoints(sessionId: string) {
   const supabase = await createClient();
 
-  // Get session areas and topics
-  const { data: session } = await supabase
-    .from('sessions')
-    .select(`
-      session_areas (area_id),
-      session_topics (topic_id)
-    `)
-    .eq('id', sessionId)
-    .single();
+  const [permanentResult, sessionOnlyResult] = await Promise.all([
+    supabase
+      .from('session_checkpoints')
+      .select(`*, users (id, github_username, avatar_url)`)
+      .eq('session_id', sessionId)
+      .eq('source', 'permanent')
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('session_checkpoints')
+      .select(`*, users (id, github_username, avatar_url)`)
+      .eq('session_id', sessionId)
+      .eq('source', 'session_only')
+      .order('created_at', { ascending: true }),
+  ]);
 
-  if (!session) {
-    return {
-      areaCheckpoints: [],
-      topicCheckpoints: [],
-    };
+  if (permanentResult.error) {
+    console.error('Error fetching permanent checkpoints:', permanentResult.error);
+  }
+  if (sessionOnlyResult.error) {
+    console.error('Error fetching session-only checkpoints:', sessionOnlyResult.error);
   }
 
-  const areaIds = session.session_areas?.map((sa: any) => sa.area_id) || [];
-  const topicIds = session.session_topics?.map((st: any) => st.topic_id) || [];
-
-  // Get general checkpoints for selected areas
-  const { data: areaCheckpoints } = await supabase
-    .from('checkpoints')
-    .select(`
-      *,
-      areas (id, name)
-    `)
-    .in('area_id', areaIds)
-    .is('topic_id', null)
-    .order('created_at', { ascending: true });
-
-  // Get topic-specific checkpoints
-  const { data: topicCheckpoints } = await supabase
-    .from('checkpoints')
-    .select(`
-      *,
-      topics (id, name, area_id)
-    `)
-    .in('topic_id', topicIds)
-    .order('created_at', { ascending: true });
-
   return {
-    areaCheckpoints: areaCheckpoints || [],
-    topicCheckpoints: topicCheckpoints || [],
+    permanentCheckpoints: permanentResult.data || [],
+    sessionOnlyCheckpoints: sessionOnlyResult.data || [],
   };
 }
 
@@ -365,7 +329,7 @@ export async function getSessionResults(sessionId: string, userId: string) {
 // Update or create a session result
 export async function updateSessionResult(data: {
   sessionId: string;
-  checkpointId: string;
+  sessionCheckpointId: string;
   status: 'passed' | 'bug' | 'skipped' | 'not_applicable';
   bugLink?: string | null;
   bugDescription?: string | null;
@@ -382,14 +346,14 @@ export async function updateSessionResult(data: {
     .from('session_results')
     .upsert({
       session_id: data.sessionId,
-      checkpoint_id: data.checkpointId,
+      session_checkpoint_id: data.sessionCheckpointId,
       user_id: user.id,
       status: data.status,
       bug_link: data.bugLink || null,
       bug_description: data.bugDescription || null,
       updated_at: new Date().toISOString(),
     }, {
-      onConflict: 'session_id,checkpoint_id,user_id'
+      onConflict: 'session_id,session_checkpoint_id,user_id'
     })
     .select()
     .single();
@@ -451,14 +415,13 @@ export async function updateTesterStatus(sessionId: string, status: 'in_progress
   revalidatePath(`/sessions/${sessionId}`);
 }
 
-// Create a proposed checkpoint
-export async function createProposedCheckpoint(data: {
+// Add a checkpoint during a session
+export async function addSessionCheckpoint(data: {
   sessionId: string;
   description: string;
   category?: string | null;
-  targetType: 'area' | 'topic';
-  targetAreaId?: string | null;
-  targetTopicId?: string | null;
+  addToPermanent: boolean;
+  areaId?: string | null;
 }) {
   const supabase = await createClient();
 
@@ -468,51 +431,50 @@ export async function createProposedCheckpoint(data: {
     throw new Error('Unauthorized');
   }
 
-  const { data: proposal, error } = await supabase
-    .from('proposed_checkpoints')
+  // If adding to permanent checklist, create checkpoint first
+  let permanentCheckpointId = null;
+  if (data.addToPermanent && data.areaId) {
+    const { data: permanentCheckpoint, error: permanentError } = await supabase
+      .from('checkpoints')
+      .insert({
+        area_id: data.areaId,
+        description: data.description,
+        category: data.category || null,
+        created_by: user.id,
+      })
+      .select()
+      .single();
+
+    if (permanentError) {
+      console.error('Error creating permanent checkpoint:', permanentError);
+      throw new Error('Failed to create permanent checkpoint');
+    }
+
+    permanentCheckpointId = permanentCheckpoint.id;
+  }
+
+  // Always create session checkpoint
+  const { data: sessionCheckpoint, error: sessionError } = await supabase
+    .from('session_checkpoints')
     .insert({
       session_id: data.sessionId,
-      proposed_by: user.id,
+      checkpoint_id: permanentCheckpointId,
       description: data.description,
       category: data.category || null,
-      target_type: data.targetType,
-      target_area_id: data.targetAreaId || null,
-      target_topic_id: data.targetTopicId || null,
-      status: 'pending',
+      source: 'session_only',
+      area_id: data.areaId || null,
+      created_by: user.id,
     })
     .select()
     .single();
 
-  if (error) {
-    console.error('Error creating proposed checkpoint:', error);
-    throw new Error('Failed to create proposal');
+  if (sessionError) {
+    console.error('Error creating session checkpoint:', sessionError);
+    throw new Error('Failed to create session checkpoint');
   }
 
   revalidatePath(`/sessions/${data.sessionId}`);
-  return proposal;
-}
-
-// Get proposed checkpoints for a session
-export async function getProposedCheckpoints(sessionId: string) {
-  const supabase = await createClient();
-
-  const { data: proposals, error } = await supabase
-    .from('proposed_checkpoints')
-    .select(`
-      *,
-      proposed_by_user:users!proposed_by (github_username, display_name),
-      target_area:areas!target_area_id (name),
-      target_topic:topics!target_topic_id (name)
-    `)
-    .eq('session_id', sessionId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching proposed checkpoints:', error);
-    return [];
-  }
-
-  return proposals;
+  return sessionCheckpoint;
 }
 
 // Dashboard data fetching functions
@@ -578,29 +540,24 @@ export async function getRecentCompletedSessions(limit: number = 5) {
 async function getSessionCoverage(sessionId: string) {
   const supabase = await createClient();
 
-  // Get total checkpoints count
-  const { areaCheckpoints, topicCheckpoints } = await getSessionCheckpoints(sessionId);
-  const totalCheckpoints = areaCheckpoints.length + topicCheckpoints.length;
+  const [checkpointsResult, resultsResult] = await Promise.all([
+    supabase
+      .from('session_checkpoints')
+      .select('*', { count: 'exact', head: true })
+      .eq('session_id', sessionId),
+    supabase
+      .from('session_results')
+      .select('session_checkpoint_id')
+      .eq('session_id', sessionId),
+  ]);
 
+  const totalCheckpoints = checkpointsResult.count || 0;
   if (totalCheckpoints === 0) {
     return 0;
   }
 
-  // Get total results marked (any status)
-  const { count } = await supabase
-    .from('session_results')
-    .select('*', { count: 'exact', head: true })
-    .eq('session_id', sessionId);
-
-  const markedCheckpoints = count || 0;
-
-  // Coverage is based on unique checkpoints marked (not total marks from all testers)
-  const { data: uniqueCheckpoints } = await supabase
-    .from('session_results')
-    .select('checkpoint_id')
-    .eq('session_id', sessionId);
-
-  const uniqueMarked = new Set(uniqueCheckpoints?.map(r => r.checkpoint_id) || []).size;
+  // Coverage is based on unique session checkpoints marked (not total marks from all testers)
+  const uniqueMarked = new Set(resultsResult.data?.map(r => r.session_checkpoint_id) || []).size;
 
   return Math.round((uniqueMarked / totalCheckpoints) * 100);
 }

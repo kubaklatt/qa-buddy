@@ -6,13 +6,12 @@ import { revalidatePath } from 'next/cache';
 export async function getAreas() {
   const supabase = await createClient();
 
-  // Fetch areas with counts in a single query using aggregation
+  // Fetch areas with checkpoint counts in a single query using aggregation
   const { data: areas, error } = await supabase
     .from('areas')
     .select(`
       *,
-      checkpoints:checkpoints!area_id(count),
-      topics:topics(count)
+      checkpoints:checkpoints!area_id(count)
     `)
     .order('created_at', { ascending: false });
 
@@ -29,7 +28,6 @@ export async function getAreas() {
     created_by: area.created_by,
     created_at: area.created_at,
     checkpoint_count: area.checkpoints?.[0]?.count || 0,
-    topic_count: area.topics?.[0]?.count || 0,
   }));
 
   return areasWithCounts;

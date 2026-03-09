@@ -30,9 +30,9 @@ export default async function SessionPage({ params }: SessionPageProps) {
   );
 
   // Get checkpoints and results if user is a tester
-  let checkpoints: { areaCheckpoints: any[]; topicCheckpoints: any[] } = {
-    areaCheckpoints: [],
-    topicCheckpoints: []
+  let checkpoints: { permanentCheckpoints: any[]; sessionOnlyCheckpoints: any[] } = {
+    permanentCheckpoints: [],
+    sessionOnlyCheckpoints: []
   };
   let results: any[] = [];
   let testerInfo = null;

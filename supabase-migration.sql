@@ -10,13 +10,11 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Drop all tables in reverse dependency order (CASCADE will handle foreign keys)
 -- This allows you to run the migration multiple times without errors
-DROP TABLE IF EXISTS proposed_checkpoints CASCADE;
 DROP TABLE IF EXISTS session_results CASCADE;
+DROP TABLE IF EXISTS session_checkpoints CASCADE;
 DROP TABLE IF EXISTS session_testers CASCADE;
-DROP TABLE IF EXISTS session_topics CASCADE;
 DROP TABLE IF EXISTS session_areas CASCADE;
 DROP TABLE IF EXISTS checkpoints CASCADE;
-DROP TABLE IF EXISTS topics CASCADE;
 DROP TABLE IF EXISTS sessions CASCADE;
 DROP TABLE IF EXISTS areas CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
@@ -45,31 +43,16 @@ CREATE TABLE areas (
   created_by UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Topics table
--- Specific themes within an area
-CREATE TABLE topics (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  area_id UUID NOT NULL REFERENCES areas(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  description TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  created_by UUID REFERENCES users(id) ON DELETE SET NULL
-);
-
 -- Checkpoints table
--- Checklist items - can belong to either an area (general) or topic (specific)
+-- Permanent checklist items that belong to an area's permanent checklist
+-- These get snapshotted into sessions when a session is created with the area
 CREATE TABLE checkpoints (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  area_id UUID REFERENCES areas(id) ON DELETE CASCADE,
-  topic_id UUID REFERENCES topics(id) ON DELETE CASCADE,
+  area_id UUID NOT NULL REFERENCES areas(id) ON DELETE CASCADE,
   description TEXT NOT NULL,
   category TEXT,
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT checkpoint_belongs_to_area_or_topic CHECK (
-    (area_id IS NOT NULL AND topic_id IS NULL) OR
-    (area_id IS NULL AND topic_id IS NOT NULL)
-  )
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Sessions table
@@ -95,15 +78,6 @@ CREATE TABLE session_areas (
   UNIQUE(session_id, area_id)
 );
 
--- Session topics junction table
--- Many-to-many relationship between sessions and topics
-CREATE TABLE session_topics (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  topic_id UUID NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-  UNIQUE(session_id, topic_id)
-);
-
 -- Session testers table
 -- Assignment of testers to sessions with their browsers
 CREATE TABLE session_testers (
@@ -118,67 +92,61 @@ CREATE TABLE session_testers (
   UNIQUE(session_id, user_id)
 );
 
+-- Session checkpoints table
+-- Snapshot of checkpoints for a specific session
+-- Contains both permanent checkpoints (copied from areas) and session-only checkpoints (created during session)
+CREATE TABLE session_checkpoints (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  checkpoint_id UUID REFERENCES checkpoints(id) ON DELETE SET NULL, -- NULL for session-only checkpoints
+  description TEXT NOT NULL,
+  category TEXT,
+  source TEXT NOT NULL CHECK (source IN ('permanent', 'session_only')),
+  area_id UUID REFERENCES areas(id) ON DELETE SET NULL, -- For grouping permanent checkpoints by area
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Session results table
 -- Checkpoint outcomes per tester
+-- Now references session_checkpoints instead of checkpoints directly
 CREATE TABLE session_results (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  checkpoint_id UUID NOT NULL REFERENCES checkpoints(id) ON DELETE CASCADE,
+  session_checkpoint_id UUID NOT NULL REFERENCES session_checkpoints(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   status TEXT NOT NULL CHECK (status IN ('passed', 'bug', 'skipped', 'not_applicable')),
   bug_link TEXT,
   bug_description TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(session_id, checkpoint_id, user_id)
-);
-
--- Proposed checkpoints table
--- Suggestions from testers during a session
-CREATE TABLE proposed_checkpoints (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  proposed_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  description TEXT NOT NULL,
-  category TEXT,
-  target_type TEXT NOT NULL CHECK (target_type IN ('area', 'topic')),
-  target_area_id UUID REFERENCES areas(id) ON DELETE CASCADE,
-  target_topic_id UUID REFERENCES topics(id) ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
-  approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT proposed_checkpoint_target CHECK (
-    (target_type = 'area' AND target_area_id IS NOT NULL AND target_topic_id IS NULL) OR
-    (target_type = 'topic' AND target_topic_id IS NOT NULL AND target_area_id IS NULL)
-  )
+  UNIQUE(session_id, session_checkpoint_id, user_id)
 );
 
 -- Create indexes for better query performance
-CREATE INDEX idx_topics_area_id ON topics(area_id);
 CREATE INDEX idx_checkpoints_area_id ON checkpoints(area_id);
-CREATE INDEX idx_checkpoints_topic_id ON checkpoints(topic_id);
 CREATE INDEX idx_session_areas_session_id ON session_areas(session_id);
 CREATE INDEX idx_session_areas_area_id ON session_areas(area_id);
-CREATE INDEX idx_session_topics_session_id ON session_topics(session_id);
-CREATE INDEX idx_session_topics_topic_id ON session_topics(topic_id);
 CREATE INDEX idx_session_testers_session_id ON session_testers(session_id);
 CREATE INDEX idx_session_testers_user_id ON session_testers(user_id);
+CREATE INDEX idx_session_checkpoints_session_id ON session_checkpoints(session_id);
+CREATE INDEX idx_session_checkpoints_checkpoint_id ON session_checkpoints(checkpoint_id);
+CREATE INDEX idx_session_checkpoints_area_id ON session_checkpoints(area_id);
+CREATE INDEX idx_session_checkpoints_source ON session_checkpoints(source);
 CREATE INDEX idx_session_results_session_id ON session_results(session_id);
+CREATE INDEX idx_session_results_session_checkpoint_id ON session_results(session_checkpoint_id);
 CREATE INDEX idx_session_results_user_id ON session_results(user_id);
-CREATE INDEX idx_proposed_checkpoints_session_id ON proposed_checkpoints(session_id);
 CREATE INDEX idx_sessions_status ON sessions(status);
 
 -- Enable Row Level Security (RLS) on all tables
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE areas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE topics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE checkpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_areas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE session_topics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_testers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_checkpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_results ENABLE ROW LEVEL SECURITY;
-ALTER TABLE proposed_checkpoints ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for users table
 CREATE POLICY "Users can view all users" ON users
@@ -201,19 +169,6 @@ CREATE POLICY "Authenticated users can update areas" ON areas
   FOR UPDATE USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "Authenticated users can delete areas" ON areas
-  FOR DELETE USING (auth.uid() IS NOT NULL);
-
--- RLS Policies for topics table
-CREATE POLICY "Anyone can view topics" ON topics
-  FOR SELECT USING (true);
-
-CREATE POLICY "Authenticated users can create topics" ON topics
-  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-
-CREATE POLICY "Authenticated users can update topics" ON topics
-  FOR UPDATE USING (auth.uid() IS NOT NULL);
-
-CREATE POLICY "Authenticated users can delete topics" ON topics
   FOR DELETE USING (auth.uid() IS NOT NULL);
 
 -- RLS Policies for checkpoints table
@@ -249,13 +204,6 @@ CREATE POLICY "Anyone can view session_areas" ON session_areas
 CREATE POLICY "Authenticated users can manage session_areas" ON session_areas
   FOR ALL USING (auth.uid() IS NOT NULL);
 
--- RLS Policies for session_topics table
-CREATE POLICY "Anyone can view session_topics" ON session_topics
-  FOR SELECT USING (true);
-
-CREATE POLICY "Authenticated users can manage session_topics" ON session_topics
-  FOR ALL USING (auth.uid() IS NOT NULL);
-
 -- RLS Policies for session_testers table
 CREATE POLICY "Anyone can view session_testers" ON session_testers
   FOR SELECT USING (true);
@@ -263,18 +211,18 @@ CREATE POLICY "Anyone can view session_testers" ON session_testers
 CREATE POLICY "Authenticated users can manage session_testers" ON session_testers
   FOR ALL USING (auth.uid() IS NOT NULL);
 
+-- RLS Policies for session_checkpoints table
+CREATE POLICY "Anyone can view session_checkpoints" ON session_checkpoints
+  FOR SELECT USING (true);
+
+CREATE POLICY "Authenticated users can manage session_checkpoints" ON session_checkpoints
+  FOR ALL USING (auth.uid() IS NOT NULL);
+
 -- RLS Policies for session_results table
 CREATE POLICY "Anyone can view session_results" ON session_results
   FOR SELECT USING (true);
 
 CREATE POLICY "Authenticated users can manage session_results" ON session_results
-  FOR ALL USING (auth.uid() IS NOT NULL);
-
--- RLS Policies for proposed_checkpoints table
-CREATE POLICY "Anyone can view proposed_checkpoints" ON proposed_checkpoints
-  FOR SELECT USING (true);
-
-CREATE POLICY "Authenticated users can manage proposed_checkpoints" ON proposed_checkpoints
   FOR ALL USING (auth.uid() IS NOT NULL);
 
 -- Create updated_at trigger function

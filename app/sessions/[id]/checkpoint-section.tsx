@@ -4,7 +4,7 @@ import { CheckpointRow } from "./checkpoint-row";
 
 interface CheckpointSectionProps {
   section: {
-    type: 'area' | 'topic';
+    type: 'permanent' | 'session_only';
     id: string;
     name: string;
     checkpoints: any[];
@@ -31,9 +31,9 @@ export function CheckpointSection({ section, sessionId, results }: CheckpointSec
       {/* Section Header */}
       <div className="mb-3">
         <h3 className="text-lg font-semibold flex items-center gap-2">
-          {section.type === 'area' ? '📂' : '📌'}
+          {section.type === 'permanent' ? '📂' : '📝'}
           {section.name}
-          {section.type === 'area' && <span className="text-sm font-normal text-muted-foreground">— General</span>}
+          {section.type === 'permanent' && <span className="text-sm font-normal text-muted-foreground">— Permanent Checklist</span>}
         </h3>
       </div>
 
@@ -48,7 +48,7 @@ export function CheckpointSection({ section, sessionId, results }: CheckpointSec
             )}
             <div className="space-y-2">
               {groupedCheckpoints[category].map((checkpoint: any) => {
-                const result = results.find((r) => r.checkpoint_id === checkpoint.id);
+                const result = results.find((r) => r.session_checkpoint_id === checkpoint.id);
                 return (
                   <CheckpointRow
                     key={checkpoint.id}

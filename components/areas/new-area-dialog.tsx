@@ -27,12 +27,13 @@ export function NewAreaDialog() {
     setLoading(true);
 
     const formData = new FormData(e.currentTarget);
+    const form = e.currentTarget; // Zachowaj referencję do formularza
 
     try {
       await createArea(formData);
       toast.success('Area created successfully');
+      form.reset(); // Resetuj przed zamknięciem dialogu
       setOpen(false);
-      e.currentTarget.reset();
     } catch (error) {
       toast.error('Failed to create area');
       console.error(error);

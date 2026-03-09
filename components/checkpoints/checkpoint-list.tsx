@@ -22,11 +22,10 @@ import type { CheckpointWithUser } from '@/lib/types';
 
 interface CheckpointListProps {
   checkpoints: CheckpointWithUser[];
-  areaId?: string;
-  topicId?: string;
+  areaId: string;
 }
 
-export function CheckpointList({ checkpoints, areaId, topicId }: CheckpointListProps) {
+export function CheckpointList({ checkpoints, areaId }: CheckpointListProps) {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -39,8 +38,7 @@ export function CheckpointList({ checkpoints, areaId, topicId }: CheckpointListP
     setLoading(true);
 
     const formData = new FormData(e.currentTarget);
-    if (areaId) formData.append('area_id', areaId);
-    if (topicId) formData.append('topic_id', topicId);
+    formData.append('area_id', areaId);
 
     try {
       await createCheckpoint(formData);
@@ -80,7 +78,7 @@ export function CheckpointList({ checkpoints, areaId, topicId }: CheckpointListP
     if (!deletingCheckpointId) return;
 
     try {
-      await deleteCheckpoint(deletingCheckpointId, areaId, topicId);
+      await deleteCheckpoint(deletingCheckpointId, areaId);
       toast.success('Checkpoint deleted successfully');
       setDeleteDialogOpen(false);
       setDeletingCheckpointId(null);

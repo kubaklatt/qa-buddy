@@ -1,11 +1,11 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { CreateSessionForm } from "./create-session-form";
-import { getAreasWithTopics, getAllUsers } from "@/lib/actions/sessions";
+import { getAllAreas, getAllUsers } from "@/lib/actions/sessions";
 
 export default async function NewSessionPage() {
   const [areas, users] = await Promise.all([
-    getAreasWithTopics(),
+    getAllAreas(),
     getAllUsers(),
   ]);
 

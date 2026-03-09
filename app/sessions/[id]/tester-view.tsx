@@ -7,7 +7,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Plus, CheckCircle } from "lucide-react";
 import { CheckpointSection } from "./checkpoint-section";
 import { ExplorationNotes } from "./exploration-notes";
-import { ProposeCheckpointDialog } from "./propose-checkpoint-dialog";
+import { AddCheckpointDialog } from "./add-checkpoint-dialog";
 import { useState, useMemo } from "react";
 import { updateTesterStatus } from "@/lib/actions/sessions";
 import { useRouter } from "next/navigation";
@@ -16,8 +16,8 @@ import { toast } from "sonner";
 interface TesterViewProps {
   session: any;
   checkpoints: {
-    areaCheckpoints: any[];
-    topicCheckpoints: any[];
+    permanentCheckpoints: any[];
+    sessionOnlyCheckpoints: any[];
   };
   results: any[];
   testerInfo: any;
@@ -25,24 +25,28 @@ interface TesterViewProps {
 
 export function TesterView({ session, checkpoints, results, testerInfo }: TesterViewProps) {
   const router = useRouter();
-  const [isProposeDialogOpen, setIsProposeDialogOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isMarkingComplete, setIsMarkingComplete] = useState(false);
   const [confirmCompleteDialogOpen, setConfirmCompleteDialogOpen] = useState(false);
 
-  // Organize checkpoints by area and topic
-  const organizedCheckpoints = useMemo(() => {
-    const sections: any[] = [];
+  // Organize permanent checkpoints by area
+  const permanentSections = useMemo(() => {
+    const sections: Array<{
+      type: 'permanent';
+      id: string;
+      name: string;
+      checkpoints: any[];
+    }> = [];
     const areas = session.session_areas?.map((sa: any) => sa.areas) || [];
-    const topics = session.session_topics?.map((st: any) => st.topics) || [];
 
-    // Add area general sections
+    // Group permanent checkpoints by area
     areas.forEach((area: any) => {
-      const areaCheckpointsList = checkpoints.areaCheckpoints.filter(
+      const areaCheckpointsList = checkpoints.permanentCheckpoints.filter(
         (cp: any) => cp.area_id === area.id
       );
       if (areaCheckpointsList.length > 0) {
         sections.push({
-          type: 'area',
+          type: 'permanent' as const,
           id: area.id,
           name: area.name,
           checkpoints: areaCheckpointsList,
@@ -50,28 +54,26 @@ export function TesterView({ session, checkpoints, results, testerInfo }: Tester
       }
     });
 
-    // Add topic sections
-    topics.forEach((topic: any) => {
-      const topicCheckpointsList = checkpoints.topicCheckpoints.filter(
-        (cp: any) => cp.topic_id === topic.id
-      );
-      if (topicCheckpointsList.length > 0) {
-        sections.push({
-          type: 'topic',
-          id: topic.id,
-          name: topic.name,
-          checkpoints: topicCheckpointsList,
-        });
-      }
-    });
-
     return sections;
-  }, [session, checkpoints]);
+  }, [session, checkpoints.permanentCheckpoints]);
+
+  // Session-only checkpoints
+  const sessionOnlySection = useMemo(() => {
+    if (checkpoints.sessionOnlyCheckpoints.length === 0) {
+      return null;
+    }
+    return {
+      type: 'session_only' as const,
+      id: 'session_only',
+      name: 'Session Checkpoints',
+      checkpoints: checkpoints.sessionOnlyCheckpoints,
+    };
+  }, [checkpoints.sessionOnlyCheckpoints]);
 
   // Calculate progress
   const totalCheckpoints = useMemo(() => {
-    return organizedCheckpoints.reduce((sum, section) => sum + section.checkpoints.length, 0);
-  }, [organizedCheckpoints]);
+    return checkpoints.permanentCheckpoints.length + checkpoints.sessionOnlyCheckpoints.length;
+  }, [checkpoints]);
 
   const completedCheckpoints = useMemo(() => {
     return results.length;
@@ -114,10 +116,10 @@ export function TesterView({ session, checkpoints, results, testerInfo }: Tester
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsProposeDialogOpen(true)}
+                onClick={() => setIsAddDialogOpen(true)}
               >
                 <Plus className="h-4 w-4 mr-1" />
-                Propose Checkpoint
+                Add Checkpoint
               </Button>
               {!isCompleted && (
                 <Button
@@ -163,19 +165,32 @@ export function TesterView({ session, checkpoints, results, testerInfo }: Tester
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {organizedCheckpoints.length === 0 && (
+          {permanentSections.length === 0 && !sessionOnlySection && (
             <p className="text-center text-muted-foreground py-8">
               No checkpoints found for this session
             </p>
           )}
-          {organizedCheckpoints.map((section) => (
+
+          {/* Permanent checkpoints grouped by area */}
+          {permanentSections.map((section) => (
             <CheckpointSection
-              key={`${section.type}-${section.id}`}
+              key={`permanent-${section.id}`}
               section={section}
               sessionId={session.id}
               results={results}
             />
           ))}
+
+          {/* Session-only checkpoints */}
+          {sessionOnlySection && (
+            <div className="pt-6 border-t">
+              <CheckpointSection
+                section={sessionOnlySection}
+                sessionId={session.id}
+                results={results}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -185,13 +200,12 @@ export function TesterView({ session, checkpoints, results, testerInfo }: Tester
         initialNotes={testerInfo.notes || ''}
       />
 
-      {/* Propose Checkpoint Dialog */}
-      <ProposeCheckpointDialog
+      {/* Add Checkpoint Dialog */}
+      <AddCheckpointDialog
         sessionId={session.id}
         areas={session.session_areas?.map((sa: any) => sa.areas) || []}
-        topics={session.session_topics?.map((st: any) => st.topics) || []}
-        open={isProposeDialogOpen}
-        onOpenChange={setIsProposeDialogOpen}
+        open={isAddDialogOpen}
+        onOpenChange={setIsAddDialogOpen}
       />
 
       {/* Confirm Complete Dialog */}

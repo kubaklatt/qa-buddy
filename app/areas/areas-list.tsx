@@ -5,14 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import Link from "next/link";
-import { CheckCircle, FolderTree } from "lucide-react";
+import { CheckCircle } from "lucide-react";
 
 interface Area {
   id: string;
   name: string;
   description: string | null;
   checkpoint_count: number;
-  topic_count: number;
 }
 
 interface AreasListProps {
@@ -87,11 +86,7 @@ export function AreasList({ areas }: AreasListProps) {
                       <div className="flex gap-4 text-sm">
                         <div className="flex items-center gap-1.5 text-muted-foreground">
                           <CheckCircle className="h-4 w-4" />
-                          <span>{area.checkpoint_count} checkpoints</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <FolderTree className="h-4 w-4" />
-                          <span>{area.topic_count} topics</span>
+                          <span>{area.checkpoint_count} permanent checkpoints</span>
                         </div>
                       </div>
                     </div>

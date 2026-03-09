@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase-server';
 import { revalidatePath } from 'next/cache';
 
-export async function getCheckpoints(params: { areaId?: string; topicId?: string }) {
+export async function getCheckpoints(params: { areaId?: string }) {
   const supabase = await createClient();
 
   let query = supabase
@@ -12,9 +12,7 @@ export async function getCheckpoints(params: { areaId?: string; topicId?: string
     .order('created_at', { ascending: true });
 
   if (params.areaId) {
-    query = query.eq('area_id', params.areaId).is('topic_id', null);
-  } else if (params.topicId) {
-    query = query.eq('topic_id', params.topicId).is('area_id', null);
+    query = query.eq('area_id', params.areaId);
   }
 
   const { data: checkpoints, error } = await query;
@@ -38,16 +36,14 @@ export async function createCheckpoint(formData: FormData) {
 
   const description = formData.get('description') as string;
   const category = formData.get('category') as string;
-  const areaId = formData.get('area_id') as string | null;
-  const topicId = formData.get('topic_id') as string | null;
+  const areaId = formData.get('area_id') as string;
 
   const { data, error } = await supabase
     .from('checkpoints')
     .insert({
       description,
       category: category || null,
-      area_id: areaId || null,
-      topic_id: topicId || null,
+      area_id: areaId,
       created_by: user.id,
     })
     .select('*, users:created_by(id, github_username, avatar_url)')
@@ -58,19 +54,7 @@ export async function createCheckpoint(formData: FormData) {
     throw new Error('Failed to create checkpoint');
   }
 
-  if (areaId) {
-    revalidatePath(`/areas/${areaId}`);
-  } else if (topicId) {
-    // Fetch the topic to get the area_id for revalidation
-    const { data: topic } = await supabase
-      .from('topics')
-      .select('area_id')
-      .eq('id', topicId)
-      .single();
-    if (topic) {
-      revalidatePath(`/areas/${topic.area_id}/topics/${topicId}`);
-    }
-  }
+  revalidatePath(`/areas/${areaId}`);
 
   return data;
 }
@@ -102,24 +86,15 @@ export async function updateCheckpoint(id: string, formData: FormData) {
     throw new Error('Failed to update checkpoint');
   }
 
-  // Revalidate the appropriate path
+  // Revalidate the area path
   if (data.area_id) {
     revalidatePath(`/areas/${data.area_id}`);
-  } else if (data.topic_id) {
-    const { data: topic } = await supabase
-      .from('topics')
-      .select('area_id')
-      .eq('id', data.topic_id)
-      .single();
-    if (topic) {
-      revalidatePath(`/areas/${topic.area_id}/topics/${data.topic_id}`);
-    }
   }
 
   return data;
 }
 
-export async function deleteCheckpoint(id: string, areaId?: string, topicId?: string) {
+export async function deleteCheckpoint(id: string, areaId: string) {
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -138,17 +113,6 @@ export async function deleteCheckpoint(id: string, areaId?: string, topicId?: st
     throw new Error('Failed to delete checkpoint');
   }
 
-  // Revalidate the appropriate path
-  if (areaId) {
-    revalidatePath(`/areas/${areaId}`);
-  } else if (topicId) {
-    const { data: topic } = await supabase
-      .from('topics')
-      .select('area_id')
-      .eq('id', topicId)
-      .single();
-    if (topic) {
-      revalidatePath(`/areas/${topic.area_id}/topics/${topicId}`);
-    }
-  }
+  // Revalidate the area path
+  revalidatePath(`/areas/${areaId}`);
 }
