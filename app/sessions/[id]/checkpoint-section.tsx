@@ -10,10 +10,22 @@ interface CheckpointSectionProps {
     checkpoints: any[];
   };
   sessionId: string;
-  results: any[];
+  myResults: any[];
+  allResults: any[];
+  allBugs: any[];
+  sessionTesters: any[];
+  currentUserId: string;
 }
 
-export function CheckpointSection({ section, sessionId, results }: CheckpointSectionProps) {
+export function CheckpointSection({
+  section,
+  sessionId,
+  myResults,
+  allResults,
+  allBugs,
+  sessionTesters,
+  currentUserId,
+}: CheckpointSectionProps) {
   // Group checkpoints by category
   const groupedCheckpoints = section.checkpoints.reduce((acc: any, checkpoint: any) => {
     const category = checkpoint.category || 'General';
@@ -48,13 +60,22 @@ export function CheckpointSection({ section, sessionId, results }: CheckpointSec
             )}
             <div className="space-y-2">
               {groupedCheckpoints[category].map((checkpoint: any) => {
-                const result = results.find((r) => r.session_checkpoint_id === checkpoint.id);
+                const myResult = myResults.find((r) => r.session_checkpoint_id === checkpoint.id);
+                const checkpointAllResults = allResults.filter((r) => r.session_checkpoint_id === checkpoint.id);
+                const checkpointAllBugs = allBugs.filter((b) => b.session_checkpoint_id === checkpoint.id);
+                const myBugs = checkpointAllBugs.filter((b) => b.user_id === currentUserId);
+
                 return (
                   <CheckpointRow
                     key={checkpoint.id}
                     checkpoint={checkpoint}
                     sessionId={sessionId}
-                    result={result}
+                    myResult={myResult}
+                    myBugs={myBugs}
+                    allOkResults={checkpointAllResults}
+                    allBugs={checkpointAllBugs}
+                    sessionTesters={sessionTesters}
+                    currentUserId={currentUserId}
                   />
                 );
               })}

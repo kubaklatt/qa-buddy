@@ -10,6 +10,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Drop all tables in reverse dependency order (CASCADE will handle foreign keys)
 -- This allows you to run the migration multiple times without errors
+DROP TABLE IF EXISTS session_bugs CASCADE;
 DROP TABLE IF EXISTS session_results CASCADE;
 DROP TABLE IF EXISTS session_checkpoints CASCADE;
 DROP TABLE IF EXISTS session_testers CASCADE;
@@ -106,23 +107,36 @@ CREATE TABLE session_checkpoints (
   source TEXT NOT NULL CHECK (source IN ('permanent', 'session_only')),
   area_id UUID REFERENCES areas(id) ON DELETE SET NULL, -- For grouping permanent checkpoints by area
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  -- Global skip state: set by one tester, visible to all
+  skipped_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  skipped_at TIMESTAMPTZ
 );
 
 -- Session results table
--- Checkpoint outcomes per tester
--- Now references session_checkpoints instead of checkpoints directly
+-- Tracks when a tester marks a checkpoint as OK (passed)
+-- Bugs are tracked separately in session_bugs
 CREATE TABLE session_results (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   session_checkpoint_id UUID NOT NULL REFERENCES session_checkpoints(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status TEXT NOT NULL CHECK (status IN ('passed', 'bug', 'skipped', 'not_applicable')),
-  bug_link TEXT,
-  bug_description TEXT,
+  status TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(session_id, session_checkpoint_id, user_id)
+);
+
+-- Session bugs table
+-- Multiple bugs can be reported per checkpoint per tester
+CREATE TABLE session_bugs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  session_checkpoint_id UUID NOT NULL REFERENCES session_checkpoints(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  link TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Create indexes for better query performance
@@ -138,6 +152,9 @@ CREATE INDEX idx_session_checkpoints_source ON session_checkpoints(source);
 CREATE INDEX idx_session_results_session_id ON session_results(session_id);
 CREATE INDEX idx_session_results_session_checkpoint_id ON session_results(session_checkpoint_id);
 CREATE INDEX idx_session_results_user_id ON session_results(user_id);
+CREATE INDEX idx_session_bugs_session_id ON session_bugs(session_id);
+CREATE INDEX idx_session_bugs_session_checkpoint_id ON session_bugs(session_checkpoint_id);
+CREATE INDEX idx_session_bugs_user_id ON session_bugs(user_id);
 CREATE INDEX idx_sessions_status ON sessions(status);
 
 -- Enable Row Level Security (RLS) on all tables
@@ -149,6 +166,7 @@ ALTER TABLE session_areas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_testers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_checkpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_bugs ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for users table
 CREATE POLICY "Users can view all users" ON users
@@ -225,6 +243,13 @@ CREATE POLICY "Anyone can view session_results" ON session_results
   FOR SELECT USING (true);
 
 CREATE POLICY "Authenticated users can manage session_results" ON session_results
+  FOR ALL USING (auth.uid() IS NOT NULL);
+
+-- RLS Policies for session_bugs table
+CREATE POLICY "Anyone can view session_bugs" ON session_bugs
+  FOR SELECT USING (true);
+
+CREATE POLICY "Authenticated users can manage session_bugs" ON session_bugs
   FOR ALL USING (auth.uid() IS NOT NULL);
 
 -- Create updated_at trigger function

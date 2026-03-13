@@ -1,6 +1,6 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
-import { getSession, getSessionCheckpoints, getSessionResults } from "@/lib/actions/sessions";
+import { getSession, getSessionCheckpoints, getSessionResults, getAllSessionResults, getSessionBugs } from "@/lib/actions/sessions";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
 import { SessionHeader } from "./session-header";
@@ -34,12 +34,18 @@ export default async function SessionPage({ params }: SessionPageProps) {
     permanentCheckpoints: [],
     sessionOnlyCheckpoints: []
   };
-  let results: any[] = [];
+  let myResults: any[] = [];
+  let allResults: any[] = [];
+  let allBugs: any[] = [];
   let testerInfo = null;
 
   if (isAssignedTester && user) {
-    checkpoints = await getSessionCheckpoints(id);
-    results = await getSessionResults(id, user.id);
+    [checkpoints, myResults, allResults, allBugs] = await Promise.all([
+      getSessionCheckpoints(id),
+      getSessionResults(id, user.id),
+      getAllSessionResults(id),
+      getSessionBugs(id),
+    ]);
     testerInfo = session.session_testers?.find(
       (tester: any) => tester.users.id === user.id
     );
@@ -59,12 +65,15 @@ export default async function SessionPage({ params }: SessionPageProps) {
 
         <SessionHeader session={session} />
 
-        {isAssignedTester && testerInfo && (
+        {isAssignedTester && testerInfo && user && (
           <TesterView
             session={session}
             checkpoints={checkpoints}
-            results={results}
+            myResults={myResults}
+            allResults={allResults}
+            allBugs={allBugs}
             testerInfo={testerInfo}
+            currentUserId={user.id}
           />
         )}
       </div>

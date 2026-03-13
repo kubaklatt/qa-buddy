@@ -283,13 +283,13 @@ export async function getSessionCheckpoints(sessionId: string) {
   const [permanentResult, sessionOnlyResult] = await Promise.all([
     supabase
       .from('session_checkpoints')
-      .select(`*, users (id, github_username, avatar_url)`)
+      .select(`*, skipped_by_user:users!skipped_by(id, github_username, display_name, avatar_url)`)
       .eq('session_id', sessionId)
       .eq('source', 'permanent')
       .order('created_at', { ascending: true }),
     supabase
       .from('session_checkpoints')
-      .select(`*, users (id, github_username, avatar_url)`)
+      .select(`*, skipped_by_user:users!skipped_by(id, github_username, display_name, avatar_url)`)
       .eq('session_id', sessionId)
       .eq('source', 'session_only')
       .order('created_at', { ascending: true }),
@@ -308,7 +308,7 @@ export async function getSessionCheckpoints(sessionId: string) {
   };
 }
 
-// Get session results for the current user
+// Get session results (OK marks) for the current user
 export async function getSessionResults(sessionId: string, userId: string) {
   const supabase = await createClient();
 
@@ -326,45 +326,179 @@ export async function getSessionResults(sessionId: string, userId: string) {
   return results;
 }
 
-// Update or create a session result
-export async function updateSessionResult(data: {
+// Get all session results (OK marks) from all testers
+export async function getAllSessionResults(sessionId: string) {
+  const supabase = await createClient();
+
+  const { data: results, error } = await supabase
+    .from('session_results')
+    .select('session_checkpoint_id, user_id, status')
+    .eq('session_id', sessionId);
+
+  if (error) {
+    console.error('Error fetching all session results:', error);
+    return [];
+  }
+
+  return results;
+}
+
+// Get all bugs for a session (all testers)
+export async function getSessionBugs(sessionId: string) {
+  const supabase = await createClient();
+
+  const { data: bugs, error } = await supabase
+    .from('session_bugs')
+    .select('*, users (id, github_username, display_name, avatar_url)')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching session bugs:', error);
+    return [];
+  }
+
+  return bugs;
+}
+
+// Mark a checkpoint as OK
+export async function markCheckpointOk(sessionId: string, checkpointId: string) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Unauthorized');
+
+  const { error } = await supabase
+    .from('session_results')
+    .upsert({
+      session_id: sessionId,
+      session_checkpoint_id: checkpointId,
+      user_id: user.id,
+      status: 'ok',
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'session_id,session_checkpoint_id,user_id' });
+
+  if (error) {
+    console.error('Error marking checkpoint OK:', error);
+    throw new Error('Failed to mark checkpoint OK');
+  }
+
+  revalidatePath(`/sessions/${sessionId}`);
+}
+
+// Unmark a checkpoint (remove OK status)
+export async function unmarkCheckpointOk(sessionId: string, checkpointId: string) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Unauthorized');
+
+  const { error } = await supabase
+    .from('session_results')
+    .delete()
+    .eq('session_id', sessionId)
+    .eq('session_checkpoint_id', checkpointId)
+    .eq('user_id', user.id);
+
+  if (error) {
+    console.error('Error unmarking checkpoint:', error);
+    throw new Error('Failed to unmark checkpoint');
+  }
+
+  revalidatePath(`/sessions/${sessionId}`);
+}
+
+// Skip a checkpoint globally (visible to all testers)
+export async function skipCheckpoint(sessionId: string, checkpointId: string) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Unauthorized');
+
+  const { error } = await supabase
+    .from('session_checkpoints')
+    .update({ skipped_by: user.id, skipped_at: new Date().toISOString() })
+    .eq('id', checkpointId)
+    .eq('session_id', sessionId);
+
+  if (error) {
+    console.error('Error skipping checkpoint:', error);
+    throw new Error('Failed to skip checkpoint');
+  }
+
+  revalidatePath(`/sessions/${sessionId}`);
+}
+
+// Undo a global skip
+export async function unskipCheckpoint(sessionId: string, checkpointId: string) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Unauthorized');
+
+  const { error } = await supabase
+    .from('session_checkpoints')
+    .update({ skipped_by: null, skipped_at: null })
+    .eq('id', checkpointId)
+    .eq('session_id', sessionId);
+
+  if (error) {
+    console.error('Error unskipping checkpoint:', error);
+    throw new Error('Failed to undo skip');
+  }
+
+  revalidatePath(`/sessions/${sessionId}`);
+}
+
+// Add a bug report to a checkpoint
+export async function addBug(data: {
   sessionId: string;
   sessionCheckpointId: string;
-  status: 'passed' | 'bug' | 'skipped' | 'not_applicable';
-  bugLink?: string | null;
-  bugDescription?: string | null;
+  description: string;
+  link?: string | null;
 }) {
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Unauthorized');
 
-  if (!user) {
-    throw new Error('Unauthorized');
-  }
-
-  const { data: result, error } = await supabase
-    .from('session_results')
-    .upsert({
+  const { error } = await supabase
+    .from('session_bugs')
+    .insert({
       session_id: data.sessionId,
       session_checkpoint_id: data.sessionCheckpointId,
       user_id: user.id,
-      status: data.status,
-      bug_link: data.bugLink || null,
-      bug_description: data.bugDescription || null,
-      updated_at: new Date().toISOString(),
-    }, {
-      onConflict: 'session_id,session_checkpoint_id,user_id'
-    })
-    .select()
-    .single();
+      description: data.description,
+      link: data.link || null,
+    });
 
   if (error) {
-    console.error('Error updating session result:', error);
-    throw new Error('Failed to update session result');
+    console.error('Error adding bug:', error);
+    throw new Error('Failed to add bug');
   }
 
   revalidatePath(`/sessions/${data.sessionId}`);
-  return result;
+}
+
+// Delete a bug report (own bugs only)
+export async function deleteBug(bugId: string, sessionId: string) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Unauthorized');
+
+  const { error } = await supabase
+    .from('session_bugs')
+    .delete()
+    .eq('id', bugId)
+    .eq('user_id', user.id);
+
+  if (error) {
+    console.error('Error deleting bug:', error);
+    throw new Error('Failed to delete bug');
+  }
+
+  revalidatePath(`/sessions/${sessionId}`);
 }
 
 // Update tester notes
@@ -537,16 +671,21 @@ export async function getRecentCompletedSessions(limit: number = 5) {
 }
 
 // Calculate coverage percentage for a session
+// A checkpoint is "covered" if at least one tester marked OK or reported a bug
 async function getSessionCoverage(sessionId: string) {
   const supabase = await createClient();
 
-  const [checkpointsResult, resultsResult] = await Promise.all([
+  const [checkpointsResult, resultsResult, bugsResult] = await Promise.all([
     supabase
       .from('session_checkpoints')
       .select('*', { count: 'exact', head: true })
       .eq('session_id', sessionId),
     supabase
       .from('session_results')
+      .select('session_checkpoint_id')
+      .eq('session_id', sessionId),
+    supabase
+      .from('session_bugs')
       .select('session_checkpoint_id')
       .eq('session_id', sessionId),
   ]);
@@ -556,10 +695,12 @@ async function getSessionCoverage(sessionId: string) {
     return 0;
   }
 
-  // Coverage is based on unique session checkpoints marked (not total marks from all testers)
-  const uniqueMarked = new Set(resultsResult.data?.map(r => r.session_checkpoint_id) || []).size;
+  const coveredSet = new Set([
+    ...(resultsResult.data?.map(r => r.session_checkpoint_id) || []),
+    ...(bugsResult.data?.map(b => b.session_checkpoint_id) || []),
+  ]);
 
-  return Math.round((uniqueMarked / totalCheckpoints) * 100);
+  return Math.round((coveredSet.size / totalCheckpoints) * 100);
 }
 
 // Get bug count for a session
@@ -567,10 +708,9 @@ async function getSessionBugCount(sessionId: string) {
   const supabase = await createClient();
 
   const { count } = await supabase
-    .from('session_results')
+    .from('session_bugs')
     .select('*', { count: 'exact', head: true })
-    .eq('session_id', sessionId)
-    .eq('status', 'bug');
+    .eq('session_id', sessionId);
 
   return count || 0;
 }
@@ -591,9 +731,8 @@ export async function getDashboardStats() {
 
   // Total bugs found this month
   const { count: bugsThisMonth } = await supabase
-    .from('session_results')
+    .from('session_bugs')
     .select('session_id', { count: 'exact', head: true })
-    .eq('status', 'bug')
     .gte('created_at', startOfMonth);
 
   // Most active areas (by session count this month)

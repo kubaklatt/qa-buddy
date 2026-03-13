@@ -8,7 +8,7 @@ import { Plus, CheckCircle } from "lucide-react";
 import { CheckpointSection } from "./checkpoint-section";
 import { ExplorationNotes } from "./exploration-notes";
 import { AddCheckpointDialog } from "./add-checkpoint-dialog";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { updateTesterStatus } from "@/lib/actions/sessions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -19,15 +19,29 @@ interface TesterViewProps {
     permanentCheckpoints: any[];
     sessionOnlyCheckpoints: any[];
   };
-  results: any[];
+  myResults: any[];
+  allResults: any[];
+  allBugs: any[];
   testerInfo: any;
+  currentUserId: string;
 }
 
-export function TesterView({ session, checkpoints, results, testerInfo }: TesterViewProps) {
+export function TesterView({ session, checkpoints, myResults, allResults, allBugs, testerInfo, currentUserId }: TesterViewProps) {
   const router = useRouter();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isMarkingComplete, setIsMarkingComplete] = useState(false);
   const [confirmCompleteDialogOpen, setConfirmCompleteDialogOpen] = useState(false);
+
+  // Auto-refresh every 60 seconds to pick up other testers' updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      router.refresh();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [router]);
+
+  // All testers in this session
+  const sessionTesters = session.session_testers || [];
 
   // Organize permanent checkpoints by area
   const permanentSections = useMemo(() => {
@@ -39,7 +53,6 @@ export function TesterView({ session, checkpoints, results, testerInfo }: Tester
     }> = [];
     const areas = session.session_areas?.map((sa: any) => sa.areas) || [];
 
-    // Group permanent checkpoints by area
     areas.forEach((area: any) => {
       const areaCheckpointsList = checkpoints.permanentCheckpoints.filter(
         (cp: any) => cp.area_id === area.id
@@ -70,14 +83,14 @@ export function TesterView({ session, checkpoints, results, testerInfo }: Tester
     };
   }, [checkpoints.sessionOnlyCheckpoints]);
 
-  // Calculate progress
-  const totalCheckpoints = useMemo(() => {
-    return checkpoints.permanentCheckpoints.length + checkpoints.sessionOnlyCheckpoints.length;
-  }, [checkpoints]);
+  // Calculate my progress: checkpoints I've touched (OK or has bugs)
+  const totalCheckpoints = checkpoints.permanentCheckpoints.length + checkpoints.sessionOnlyCheckpoints.length;
 
   const completedCheckpoints = useMemo(() => {
-    return results.length;
-  }, [results]);
+    const okSet = new Set(myResults.map((r: any) => r.session_checkpoint_id));
+    const bugSet = new Set(allBugs.filter((b: any) => b.user_id === currentUserId).map((b: any) => b.session_checkpoint_id));
+    return new Set([...okSet, ...bugSet]).size;
+  }, [myResults, allBugs, currentUserId]);
 
   const progressPercentage = totalCheckpoints > 0
     ? Math.round((completedCheckpoints / totalCheckpoints) * 100)
@@ -99,6 +112,15 @@ export function TesterView({ session, checkpoints, results, testerInfo }: Tester
   };
 
   const isCompleted = testerInfo.tester_status === 'completed';
+
+  const commonSectionProps = {
+    sessionId: session.id,
+    myResults,
+    allResults,
+    allBugs,
+    sessionTesters,
+    currentUserId,
+  };
 
   return (
     <div className="space-y-6">
@@ -161,7 +183,7 @@ export function TesterView({ session, checkpoints, results, testerInfo }: Tester
         <CardHeader>
           <CardTitle>Testing Checklist</CardTitle>
           <CardDescription>
-            Mark each checkpoint with its status. Grayed out items have been checked.
+            Mark each checkpoint OK or report bugs. Grayed out items have been checked.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -176,8 +198,7 @@ export function TesterView({ session, checkpoints, results, testerInfo }: Tester
             <CheckpointSection
               key={`permanent-${section.id}`}
               section={section}
-              sessionId={session.id}
-              results={results}
+              {...commonSectionProps}
             />
           ))}
 
@@ -186,8 +207,7 @@ export function TesterView({ session, checkpoints, results, testerInfo }: Tester
             <div className="pt-6 border-t">
               <CheckpointSection
                 section={sessionOnlySection}
-                sessionId={session.id}
-                results={results}
+                {...commonSectionProps}
               />
             </div>
           )}
