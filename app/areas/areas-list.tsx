@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import Link from "next/link";
@@ -47,7 +47,7 @@ export function AreasList({ areas }: AreasListProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -60,42 +60,36 @@ export function AreasList({ areas }: AreasListProps) {
         />
       </div>
 
-      {/* Areas grid */}
+      {/* Areas list */}
       {filteredAreas.length === 0 ? (
-        <Card>
-          <CardContent className="text-center py-12">
-            <p className="text-muted-foreground">
-              No areas found matching "{searchQuery}"
-            </p>
-          </CardContent>
-        </Card>
+        <p className="text-sm text-muted-foreground py-4 text-center">
+          No areas found matching &quot;{searchQuery}&quot;
+        </p>
       ) : (
-        <div className="grid gap-4">
-          {filteredAreas.map((area) => (
-            <Link key={area.id} href={`/areas/${area.id}`}>
-              <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold mb-1">{area.name}</h3>
+        <Card>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {filteredAreas.map((area) => (
+                <Link key={area.id} href={`/areas/${area.id}`}>
+                  <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-sm">{area.name}</span>
                       {area.description && (
-                        <p className="text-sm text-muted-foreground mb-3">
+                        <span className="text-muted-foreground text-sm ml-3 truncate">
                           {area.description}
-                        </p>
+                        </span>
                       )}
-                      <div className="flex gap-4 text-sm">
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <CheckCircle className="h-4 w-4" />
-                          <span>{area.checkpoint_count} permanent checkpoints</span>
-                        </div>
-                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0 ml-4">
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      <span>{area.checkpoint_count}</span>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

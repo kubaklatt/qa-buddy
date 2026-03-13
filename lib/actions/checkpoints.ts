@@ -36,6 +36,7 @@ export async function createCheckpoint(formData: FormData) {
 
   const description = formData.get('description') as string;
   const category = formData.get('category') as string;
+  const hint = formData.get('hint') as string;
   const areaId = formData.get('area_id') as string;
 
   const { data, error } = await supabase
@@ -43,6 +44,7 @@ export async function createCheckpoint(formData: FormData) {
     .insert({
       description,
       category: category || null,
+      hint: hint || null,
       area_id: areaId,
       created_by: user.id,
     })
@@ -70,12 +72,14 @@ export async function updateCheckpoint(id: string, formData: FormData) {
 
   const description = formData.get('description') as string;
   const category = formData.get('category') as string;
+  const hint = formData.get('hint') as string;
 
   const { data, error } = await supabase
     .from('checkpoints')
     .update({
       description,
       category: category || null,
+      hint: hint || null,
     })
     .eq('id', id)
     .select('*, users:created_by(id, github_username, avatar_url)')

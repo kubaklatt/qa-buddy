@@ -28,7 +28,6 @@ export default async function AreaPage({ params }: AreaPageProps) {
   return (
     <DashboardLayout>
       <div>
-        {/* Breadcrumb navigation */}
         <Breadcrumb
           items={[
             { label: "Dashboard", href: "/" },
@@ -37,33 +36,21 @@ export default async function AreaPage({ params }: AreaPageProps) {
           ]}
         />
 
-        {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-3xl font-bold mb-2">{area.name}</h1>
-              {area.description && (
-                <p className="text-muted-foreground">{area.description}</p>
-              )}
-            </div>
-            <EditAreaDialog area={area} />
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold">{area.name}</h1>
+            {area.description && (
+              <p className="text-muted-foreground text-sm mt-1">{area.description}</p>
+            )}
           </div>
+          <EditAreaDialog area={area} />
         </div>
 
-        {/* Permanent Checklist */}
-        <div className="space-y-4">
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Permanent Checklist</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              These checkpoints will be included in every session that tags this area.
-            </p>
-          </div>
-          <Card>
-            <CardContent className="pt-6">
-              <CheckpointList checkpoints={checkpoints} areaId={id} />
-            </CardContent>
-          </Card>
-        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <CheckpointList checkpoints={checkpoints} areaId={id} />
+          </CardContent>
+        </Card>
       </div>
     </DashboardLayout>
   );

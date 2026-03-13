@@ -22,6 +22,7 @@ export interface Checkpoint {
   area_id: string;
   description: string;
   category: string | null;
+  hint: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -32,6 +33,7 @@ export interface SessionCheckpoint {
   checkpoint_id: string | null; // NULL for session-only checkpoints
   description: string;
   category: string | null;
+  hint: string | null;
   source: 'permanent' | 'session_only';
   area_id: string | null; // For grouping permanent checkpoints by area
   created_by: string | null;

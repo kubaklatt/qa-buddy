@@ -51,6 +51,7 @@ CREATE TABLE checkpoints (
   area_id UUID NOT NULL REFERENCES areas(id) ON DELETE CASCADE,
   description TEXT NOT NULL,
   category TEXT,
+  hint TEXT,
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -101,6 +102,7 @@ CREATE TABLE session_checkpoints (
   checkpoint_id UUID REFERENCES checkpoints(id) ON DELETE SET NULL, -- NULL for session-only checkpoints
   description TEXT NOT NULL,
   category TEXT,
+  hint TEXT,
   source TEXT NOT NULL CHECK (source IN ('permanent', 'session_only')),
   area_id UUID REFERENCES areas(id) ON DELETE SET NULL, -- For grouping permanent checkpoints by area
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,

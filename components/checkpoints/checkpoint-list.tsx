@@ -1,10 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Dialog,
   DialogContent,
@@ -32,19 +30,30 @@ export function CheckpointList({ checkpoints, areaId }: CheckpointListProps) {
   const [editingCheckpoint, setEditingCheckpoint] = useState<CheckpointWithUser | null>(null);
   const [deletingCheckpointId, setDeletingCheckpointId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [expandedHints, setExpandedHints] = useState<Set<string>>(new Set());
+
+  const toggleHint = (id: string) => {
+    setExpandedHints(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
 
-    const formData = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const formData = new FormData(form);
     formData.append('area_id', areaId);
 
     try {
       await createCheckpoint(formData);
       toast.success('Checkpoint added successfully');
       setAddDialogOpen(false);
-      e.currentTarget.reset();
+      form.reset();
     } catch (error) {
       toast.error('Failed to add checkpoint');
       console.error(error);
@@ -122,51 +131,52 @@ export function CheckpointList({ checkpoints, areaId }: CheckpointListProps) {
                 {items.map((checkpoint) => (
                   <div
                     key={checkpoint.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                    className="border rounded-lg overflow-hidden"
                   >
-                    <div className="flex-1">
-                      <p className="text-sm">{checkpoint.description}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        {checkpoint.category && (
-                          <Badge variant="secondary" className="text-xs">
-                            {checkpoint.category}
-                          </Badge>
+                    <div className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {checkpoint.hint && (
+                          <button
+                            onClick={() => toggleHint(checkpoint.id)}
+                            className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                          >
+                            {expandedHints.has(checkpoint.id)
+                              ? <ChevronDown className="h-4 w-4" />
+                              : <ChevronRight className="h-4 w-4" />
+                            }
+                          </button>
                         )}
-                        {checkpoint.users && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Avatar className="h-5 w-5">
-                              <AvatarImage src={checkpoint.users.avatar_url || undefined} />
-                              <AvatarFallback>
-                                {checkpoint.users.github_username?.[0]?.toUpperCase() || '?'}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span>{checkpoint.users.github_username}</span>
-                          </div>
-                        )}
+                        {!checkpoint.hint && <span className="w-4 flex-shrink-0" />}
+                        <p className="text-sm">{checkpoint.description}</p>
+                      </div>
+                      <div className="flex items-center gap-1 ml-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingCheckpoint(checkpoint);
+                            setEditDialogOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setDeletingCheckpointId(checkpoint.id);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 ml-4">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setEditingCheckpoint(checkpoint);
-                          setEditDialogOpen(true);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setDeletingCheckpointId(checkpoint.id);
-                          setDeleteDialogOpen(true);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
+                    {checkpoint.hint && expandedHints.has(checkpoint.id) && (
+                      <div className="px-9 pb-3 text-sm text-muted-foreground bg-muted/30 border-t">
+                        <p className="pt-2">{checkpoint.hint}</p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -201,6 +211,14 @@ export function CheckpointList({ checkpoints, areaId }: CheckpointListProps) {
                   id="category"
                   name="category"
                   placeholder="e.g. Paste, Edge cases, Interactions"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="hint">Hint (optional)</Label>
+                <Input
+                  id="hint"
+                  name="hint"
+                  placeholder="e.g. Check table formatting, merged cells, header styles"
                 />
               </div>
             </div>
@@ -242,6 +260,15 @@ export function CheckpointList({ checkpoints, areaId }: CheckpointListProps) {
                   id="edit-category"
                   name="category"
                   defaultValue={editingCheckpoint?.category || ''}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-hint">Hint (optional)</Label>
+                <Input
+                  id="edit-hint"
+                  name="hint"
+                  defaultValue={editingCheckpoint?.hint || ''}
+                  placeholder="e.g. Check table formatting, merged cells, header styles"
                 />
               </div>
             </div>
